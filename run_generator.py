@@ -12,11 +12,65 @@ import dnnlib.tflib as tflib
 import re
 import sys
 
+from multiprocessing import cpu_count
+from queue import Queue
+from io import BytesIO
+from threading import Thread
+
 import pretrained_networks
 
 #----------------------------------------------------------------------------
 
+NUM_THREADS = cpu_count()
+
+# ----------------------------------------------------------------------------
+
 def generate_images(network_pkl, seeds, truncation_psi):
+    # The thread and thread function should be local because `generate_images` function is running on another thread
+    image_queue = Queue(maxsize=100)
+    io_queue = Queue(maxsize=100)
+
+    # Thread function: convert image data into image buffer
+    def T_parse_image():
+        while True:
+            item = image_queue.get()
+            if item is None:
+                io_queue.put(None)
+                break
+            else:
+                im, path = item
+                im = PIL.Image.fromarray(im, 'RGB')
+                io = BytesIO()
+                im.save(io, format='png')
+                io_queue.put((io, path))
+
+    # Thread function: save image buffer into file
+    # It's better to do IO works in one thread especially when it's on HDD
+    def T_save_image():
+        none_cnt = 0
+        while True:
+            item = io_queue.get()
+            if item is None:
+                none_cnt += 1
+                if none_cnt == NUM_THREADS:
+                    break
+            else:
+                io, path = item
+                print(path)
+                with open(path, 'wb') as f:
+                    f.write(io.getvalue())
+                io.close()
+
+    # Create image saver threads
+    print('Create', NUM_THREADS, 'threads')
+    image_threads = []
+    for i in range(NUM_THREADS):
+        t = Thread(target=T_parse_image, name=f'ImageSaver_{i}', daemon=True)
+        image_threads.append(t)
+        t.start()
+    io_thread = Thread(target=T_save_image, name='ThreadImageSaver', daemon=True)
+    io_thread.start()
+
     print('Loading networks from "%s"...' % network_pkl)
     _G, _D, Gs = pretrained_networks.load_networks(network_pkl)
     noise_vars = [var for name, var in Gs.components.synthesis.vars.items() if name.startswith('noise')]
@@ -28,12 +82,21 @@ def generate_images(network_pkl, seeds, truncation_psi):
         Gs_kwargs.truncation_psi = truncation_psi
 
     for seed_idx, seed in enumerate(seeds):
-        print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
         rnd = np.random.RandomState(seed)
-        z = rnd.randn(1, *Gs.input_shape[1:]) # [minibatch, component]
-        tflib.set_vars({var: rnd.randn(*var.shape.as_list()) for var in noise_vars}) # [height, width]
-        images = Gs.run(z, None, **Gs_kwargs) # [minibatch, height, width, channel]
-        PIL.Image.fromarray(images[0], 'RGB').save(dnnlib.make_run_dir_path('seed%04d.png' % seed))
+        z = rnd.randn(1, *Gs.input_shape[1:])  # [minibatch, component]
+        tflib.set_vars({var: rnd.randn(*var.shape.as_list()) for var in noise_vars})  # [height, width]
+        images = Gs.run(z, None, **Gs_kwargs)  # [minibatch, height, width, channel]
+        filepath = dnnlib.make_run_dir_path('seed%04d.png' % seed)
+        image_queue.put((images[0], filepath))
+
+    # Close threads
+    for _ in range(NUM_THREADS):
+        image_queue.put(None)
+
+    for t in image_threads:
+        t.join()
+    io_thread.join()
+    print('done')
 
 #----------------------------------------------------------------------------
 
