@@ -15,6 +15,7 @@ I modified image generation codes to use multiple threads.
 Same with original StyleGAN2
 
 ```bash
+# Generate 100000 images into "data100000" with psi 1.0 and config_e
 python run_generator.py generate-images \
   --network gdrive:networks/stylegan2-ffhq-config-e.pkl \
   --seeds 0-99999 --truncation-psi 1.0 --result-dir "data100000"
