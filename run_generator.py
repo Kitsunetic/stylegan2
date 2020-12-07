@@ -86,7 +86,7 @@ def generate_images(network_pkl, seeds, truncation_psi):
         z = rnd.randn(1, *Gs.input_shape[1:])  # [minibatch, component]
         tflib.set_vars({var: rnd.randn(*var.shape.as_list()) for var in noise_vars})  # [height, width]
         images = Gs.run(z, None, **Gs_kwargs)  # [minibatch, height, width, channel]
-        filepath = dnnlib.make_run_dir_path('seed%04d.png' % seed)
+        filepath = dnnlib.make_run_dir_path('seed%06d.png' % seed)
         image_queue.put((images[0], filepath))
 
     # Close threads
