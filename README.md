@@ -1,3 +1,33 @@
+# Multithreading Image Generation
+
+## Parallelism
+
+Generating images with original StyleGAN2 using [run_generator.py](./run_generator.py)
+is slower because of its single thread.
+I modified image generation codes to use multiple threads.
+
+### Thread Pipeline
+
+![ThreadPipeline](./img/ThreadPipeline.png)
+
+## Usage Example
+
+Same with original StyleGAN2
+
+```bash
+python run_generator.py generate-images \
+  --network gdrive:networks/stylegan2-ffhq-config-e.pkl \
+  --seeds 0-99999 --truncation-psi 1.0 --result-dir "data100000"
+```
+
+<br><br>
+
+---
+
+---
+
+<br><br>
+
 ## StyleGAN2 &mdash; Official TensorFlow Implementation
 
 ![Teaser image](./docs/stylegan2-teaser-1024x256.png)
